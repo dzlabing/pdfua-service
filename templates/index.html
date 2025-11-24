@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <h1>PDF to PDF/UA Converter</h1>
-        <p>Upload a PDF file to convert it to PDF/UA format (accessible PDF)</p>
+        <p>Upload a PDF file to convert it to PDF/UA format with accessibility flags</p>
 
         <form id="uploadForm" enctype="multipart/form-data">
             <div class="file-input-container">
@@ -32,14 +32,14 @@
         <div id="loading" class="loading hidden">
             <div class="spinner"></div>
             <p>Converting PDF to PDF/UA format...</p>
-            <p class="loading-note">This may take a few moments</p>
+            <p class="loading-note">Setting PDF/UA accessibility flags</p>
         </div>
 
         <div id="message" class="message hidden"></div>
 
         <div class="info-box">
-            <h3>About PDF/UA</h3>
-            <p>PDF/UA (Universal Accessibility) ensures PDF documents are accessible to people with disabilities, including screen reader users.</p>
+            <h3>About PDF/UA Conversion</h3>
+            <p>This service sets PDF/UA (Universal Accessibility) flags in your PDF document using Ghostscript. The conversion applies accessibility settings but does not validate structural accessibility requirements.</p>
         </div>
     </div>
 
@@ -100,7 +100,7 @@
                 if (response.ok) {
                     // Get the filename from content-disposition header or generate one
                     const contentDisposition = response.headers.get('content-disposition');
-                    let filename = 'converted.pdf';
+                    let filename = 'converted_pdfua.pdf';
                     if (contentDisposition) {
                         const match = contentDisposition.match(/filename="(.+)"/);
                         if (match) filename = match[1];
@@ -122,7 +122,7 @@
                     window.URL.revokeObjectURL(url);
                     document.body.removeChild(a);
 
-                    showMessage('File converted and downloaded successfully!', 'success');
+                    showMessage('PDF/UA conversion completed! File downloaded successfully.', 'success');
 
                     // Reset form
                     fileInput.value = '';

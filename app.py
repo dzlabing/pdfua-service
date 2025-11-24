@@ -9,23 +9,20 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 def convert_to_pdfua(input_pdf_path, output_pdf_path):
     """
-    Convert PDF to PDF/UA using veraPDF and Ghostscript
+    Convert PDF to PDF/UA using Ghostscript only
     Returns (success: bool, message: str)
     """
     try:
-        # Check if veraPDF is available for validation
-        try:
-            subprocess.run(['verapdf', '--version'], capture_output=True, check=True)
-            vera_available = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            vera_available = False
-
         # Use Ghostscript for PDF/UA conversion
         gs_cmd = [
             'gs', '-dPDFA', '-dPDFUA', '-dNOPAUSE', '-dBATCH',
             '-sColorConversionStrategy=UseDeviceIndependentColor',
-            '-sDEVICE=pdfwrite', '-dPDFACompatibilityPolicy=2',
+            '-sDEVICE=pdfwrite',
+            '-dPDFACompatibilityPolicy=2',
             '-dCompatibilityLevel=1.7',
+            '-dDetectDuplicateImages=true',
+            '-dCompressPages=true',
+            '-dCompressFonts=true',
             f'-sOutputFile={output_pdf_path}',
             input_pdf_path
         ]
@@ -33,25 +30,17 @@ def convert_to_pdfua(input_pdf_path, output_pdf_path):
         gs_result = subprocess.run(gs_cmd, capture_output=True, text=True)
 
         if gs_result.returncode == 0:
-            if vera_available:
-                # Validate the converted file with veraPDF
-                validate_cmd = [
-                    'verapdf',
-                    '--flavour', 'pdfua-1',
-                    output_pdf_path
-                ]
-
-                validate_result = subprocess.run(validate_cmd, capture_output=True, text=True)
-
-                # veraPDF returns 1 for compliant, 0 for non-compliant
-                if validate_result.returncode == 1:
-                    return True, "Successfully converted to PDF/UA (validated)"
-                else:
-                    return True, "Conversion completed but file may not be fully PDF/UA compliant"
+            # Check if output file was created and has content
+            if os.path.exists(output_pdf_path) and os.path.getsize(output_pdf_path) > 0:
+                return True, "PDF successfully converted with PDF/UA flags"
             else:
-                return True, "Conversion completed (veraPDF not available for validation)"
+                return False, "Conversion completed but output file is empty"
         else:
             error_msg = gs_result.stderr or "Unknown Ghostscript error"
+            # Extract the most relevant error line
+            error_lines = [line for line in error_msg.split('\n') if line.strip() and 'error' in line.lower()]
+            if error_lines:
+                error_msg = error_lines[0]
             return False, f"Conversion failed: {error_msg}"
 
     except Exception as e:
@@ -85,28 +74,25 @@ def convert_pdf():
         return jsonify({'error': 'File must be a PDF'}), 400
 
     # Create temporary files
-    input_temp = None
-    output_temp = None
+    input_path = None
+    output_path = None
 
     try:
-        # Create temporary files with explicit cleanup
-        input_temp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-        input_path = input_temp.name
-        input_temp.close()  # Close so we can write to it
+        # Create temporary input file
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as input_temp:
+            input_path = input_temp.name
+            file.save(input_path)
 
-        output_temp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-        output_path = output_temp.name
-        output_temp.close()  # Close so Ghostscript can write to it
-
-        # Save uploaded file to temporary location
-        file.save(input_path)
+        # Create temporary output file
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
+            output_path = output_temp.name
 
         # Convert to PDF/UA
         success, message = convert_to_pdfua(input_path, output_path)
 
         if success:
             # Return the converted file for download
-            download_name = f"converted_{file.filename}"
+            download_name = f"pdfua_{file.filename}"
             return send_file(
                 output_path,
                 as_attachment=True,
@@ -124,9 +110,10 @@ def convert_pdf():
             if input_path and os.path.exists(input_path):
                 os.unlink(input_path)
             if output_path and os.path.exists(output_path):
-                # Only delete output file if we're not returning it
+                # Only delete output file if we're returning an error
                 if not success:
                     os.unlink(output_path)
+                # If success, the file will be deleted after being sent by send_file
         except Exception as cleanup_error:
             print(f"Cleanup error: {cleanup_error}")
 
