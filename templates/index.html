@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to PDF/UA Converter</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>PDF to PDF/UA Converter</h1>
+        <p>Upload a PDF file to convert it to PDF/UA format (accessible PDF)</p>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="file-input-container">
+                <input type="file" id="pdfFile" name="pdf_file" accept=".pdf" required>
+                <label for="pdfFile" class="file-label">
+                    <span class="file-button">Choose PDF File</span>
+                    <span class="file-name" id="fileName">No file chosen</span>
+                </label>
+            </div>
+
+            <div class="file-info">
+                <p>Max file size: 16MB</p>
+            </div>
+
+            <button type="submit" id="convertBtn" class="convert-button">
+                Convert to PDF/UA
+            </button>
+        </form>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Converting PDF to PDF/UA format...</p>
+            <p class="loading-note">This may take a few moments</p>
+        </div>
+
+        <div id="message" class="message hidden"></div>
+
+        <div class="info-box">
+            <h3>About PDF/UA</h3>
+            <p>PDF/UA (Universal Accessibility) ensures PDF documents are accessible to people with disabilities, including screen reader users.</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('pdfFile').addEventListener('change', function(e) {
+            const file = this.files[0];
+            const fileNameElement = document.getElementById('fileName');
+
+            if (file) {
+                fileNameElement.textContent = file.name;
+
+                // Check file size
+                if (file.size > 16 * 1024 * 1024) {
+                    showMessage('File size exceeds 16MB limit', 'error');
+                    this.value = '';
+                    fileNameElement.textContent = 'No file chosen';
+                } else {
+                    clearMessage();
+                }
+            } else {
+                fileNameElement.textContent = 'No file chosen';
+            }
+        });
+
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('pdfFile');
+            const convertBtn = document.getElementById('convertBtn');
+            const loading = document.getElementById('loading');
+            const message = document.getElementById('message');
+
+            const file = fileInput.files[0];
+            if (!file) {
+                showMessage('Please select a PDF file', 'error');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                showMessage('File size exceeds 16MB limit', 'error');
+                return;
+            }
+
+            // Show loading state
+            convertBtn.disabled = true;
+            loading.classList.remove('hidden');
+            message.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('pdf_file', file);
+
+            try {
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Get the filename from content-disposition header or generate one
+                    const contentDisposition = response.headers.get('content-disposition');
+                    let filename = 'converted.pdf';
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename="(.+)"/);
+                        if (match) filename = match[1];
+                    }
+
+                    // Create download link
+                    const blob = await response.blob();
+
+                    if (blob.size === 0) {
+                        throw new Error('Received empty file');
+                    }
+
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+
+                    showMessage('File converted and downloaded successfully!', 'success');
+
+                    // Reset form
+                    fileInput.value = '';
+                    document.getElementById('fileName').textContent = 'No file chosen';
+
+                } else {
+                    const errorData = await response.json();
+                    showMessage(errorData.error || `Conversion failed (Status: ${response.status})`, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Error: ' + error.message, 'error');
+            } finally {
+                convertBtn.disabled = false;
+                loading.classList.add('hidden');
+            }
+        });
+
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = `message ${type}`;
+            message.classList.remove('hidden');
+        }
+
+        function clearMessage() {
+            const message = document.getElementById('message');
+            message.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
